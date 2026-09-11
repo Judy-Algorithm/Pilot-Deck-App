@@ -1,2 +1,2 @@
 import LaterApp from '@/components/later-app';
-export default function Page(){return <LaterApp initialView="spaces"/>;}
+export default function Page(){return <LaterApp initialView="items"/>;}

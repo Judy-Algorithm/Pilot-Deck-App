@@ -2,7 +2,7 @@
 
 Later keeps the original evidence for physical belongings, extracts explicit dates with a multimodal model, asks the user to confirm them, and monitors the confirmed deadlines.
 
-The MVP has four spaces: `Expiry`, `Warranty`, `Return`, and `Proof`. Its main path is:
+The MVP has four spaces, shown in the app as 到期 (`expiry`), 保修 (`warranty`), 售后 (`return`) and 凭证 (`proof`). The interface is a mobile-first app with five tabs — 首页, 物品, ＋ (add), 提醒, 我的 — and a Chinese-only UI. Its main path is:
 
 `upload → recognition → confirmation → Files → Memory → daily risk scan → one recommendation → original evidence`
 
