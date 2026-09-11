@@ -1,0 +1,6 @@
+LATER_API_KEY=replace-with-your-key
+LATER_API_BASE=http://43.179.183.147/v1
+LATER_MODEL=deepseek-v4-flash-vision-exp
+PILOTDECK_URL=http://127.0.0.1:4174
+LATER_BRIDGE_TOKEN=replace-with-a-long-random-token
+LATER_SCAN_TOKEN=replace-with-another-long-random-token
