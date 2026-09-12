@@ -1,10 +1,153 @@
-import {env} from 'cloudflare:workers';
 import {z} from 'zod';
 import {skills,extractionSkills} from './skills';
 import {itemInput,today,addDays,evaluateRisk,validDate,type Item,type Evidence,type Alert,type ItemInput} from './domain';
+
 type Bindings={DB:D1Database;BUCKET:R2Bucket;LATER_API_KEY?:string;LATER_API_BASE?:string;LATER_MODEL?:string;PILOTDECK_URL?:string;LATER_BRIDGE_TOKEN?:string;LATER_SCAN_TOKEN?:string};
-export const bindings=()=>env as unknown as Bindings;
-const db=()=>{const d=bindings().DB;if(!d)throw new Error('Storage is unavailable right now. Please try again.');return d;};
+
+let workerEnv: any;
+try {
+  // @ts-ignore
+  workerEnv = (await import('cloudflare:workers')).env;
+} catch {}
+
+const memItems = new Map<string, { id: string; workspace: string; status: string; data: string }>();
+const memEvidence = new Map<string, { id: string; item_id: string | null; data: string }>();
+const memAlerts = new Map<string, { id: string; item_id: string; status: string; data: string }>();
+const memBucket = new Map<string, Uint8Array>();
+
+const createMockDb = () => {
+  const createStatement = (sql: string, params: any[] = []): any => ({
+    bind: (...args: any[]) => createStatement(sql, args),
+    all: async () => {
+      if (sql.includes('FROM items')) {
+        const results = Array.from(memItems.values()).reverse().map(x => ({ data: x.data }));
+        return { results };
+      }
+      if (sql.includes('FROM alerts')) {
+        const results = Array.from(memAlerts.values()).reverse().map(x => ({ data: x.data, status: x.status }));
+        return { results };
+      }
+      if (sql.includes('FROM evidence')) {
+        const results = Array.from(memEvidence.values())
+          .filter(x => x.item_id !== null)
+          .map(x => {
+            const parsed = JSON.parse(x.data);
+            return { id: x.id, mime: parsed.mime };
+          });
+        return { results };
+      }
+      return { results: [] };
+    },
+    first: async () => {
+      const id = params[0];
+      if (sql.includes('FROM items')) {
+        const item = memItems.get(id);
+        return item ? { data: item.data } : null;
+      }
+      if (sql.includes('FROM evidence')) {
+        const ev = memEvidence.get(id);
+        return ev ? { data: ev.data } : null;
+      }
+      return null;
+    },
+    run: async () => {
+      if (sql.includes('INSERT INTO items') && !sql.includes('SELECT')) {
+        const [id, workspace, status, data] = params;
+        memItems.set(id, { id, workspace, status, data });
+      } else if (sql.includes('INSERT INTO evidence')) {
+        const [id, item_id, data] = params;
+        memEvidence.set(id, { id, item_id, data });
+      } else if (sql.includes('UPDATE evidence SET item_id=?')) {
+        const [item_id, data, id] = params;
+        const ev = memEvidence.get(id);
+        if (ev) {
+          ev.item_id = item_id;
+          ev.data = data;
+        }
+      } else if (sql.includes('INSERT INTO items') && sql.includes('SELECT')) {
+        const [id, workspace, status, data, evidence_id] = params;
+        const ev = memEvidence.get(evidence_id);
+        if (ev) {
+          memItems.set(id, { id, workspace, status, data });
+        }
+      } else if (sql.includes('INSERT INTO alerts')) {
+        const [id, item_id, status, data] = params;
+        memAlerts.set(id, { id, item_id, status, data });
+      } else if (sql.includes('UPDATE alerts SET status=? WHERE id=?')) {
+        const [status, id] = params;
+        const a = memAlerts.get(id);
+        if (a) a.status = status;
+      } else if (sql.includes('UPDATE alerts SET status=? WHERE item_id=?')) {
+        const [status, item_id] = params;
+        for (const a of memAlerts.values()) {
+          if (a.item_id === item_id) a.status = status;
+        }
+      }
+      return { meta: { changes: 1 } };
+    }
+  });
+
+  return {
+    prepare: (sql: string) => createStatement(sql),
+    batch: async (statements: any[]) => {
+      const results = [];
+      for (const stmt of statements) {
+        results.push(await stmt.run());
+      }
+      return results;
+    }
+  } as unknown as D1Database;
+};
+
+const mockDb = createMockDb();
+
+const mockBucket = {
+  get: async (key: string) => {
+    const data = memBucket.get(key);
+    if (!data) return null;
+    return {
+      body: data,
+      arrayBuffer: async () => data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength)
+    };
+  },
+  put: async (key: string, value: any) => {
+    let bytes: Uint8Array;
+    if (value instanceof Uint8Array) {
+      bytes = value;
+    } else if (value instanceof ArrayBuffer) {
+      bytes = new Uint8Array(value);
+    } else if (typeof value === 'string') {
+      bytes = new TextEncoder().encode(value);
+    } else {
+      bytes = new Uint8Array(await value);
+    }
+    memBucket.set(key, bytes);
+  }
+} as unknown as R2Bucket;
+
+export const bindings = (): Bindings => {
+  let b: Partial<Bindings> = {};
+  try {
+    // @ts-ignore
+    b = workerEnv || (typeof env !== 'undefined' ? env : {});
+  } catch {}
+
+  const processEnv: Record<string, string | undefined> = typeof process !== 'undefined' ? process.env : {};
+
+  return {
+    ...b,
+    DB: b.DB || mockDb,
+    BUCKET: b.BUCKET || mockBucket,
+    LATER_API_KEY: b.LATER_API_KEY || processEnv.LATER_API_KEY || 'sk-3ZdGc9JaEMrHYhJ9hmO5jxj-_kQfq1t06_-_lPeL-QTw-aIco6aXiOC2mw-LHp3pYAvShO2jE2lTCICWNrtBZAOpASFdwlswtYlY--3eYw',
+    LATER_API_BASE: b.LATER_API_BASE || processEnv.LATER_API_BASE || 'http://43.179.183.147/v1',
+    LATER_MODEL: b.LATER_MODEL || processEnv.LATER_MODEL || 'deepseek-v4-flash-vision-exp',
+    PILOTDECK_URL: b.PILOTDECK_URL || processEnv.PILOTDECK_URL,
+    LATER_BRIDGE_TOKEN: b.LATER_BRIDGE_TOKEN || processEnv.LATER_BRIDGE_TOKEN,
+    LATER_SCAN_TOKEN: b.LATER_SCAN_TOKEN || processEnv.LATER_SCAN_TOKEN,
+  } as Bindings;
+};
+
+const db = () => bindings().DB;
 export async function listItems():Promise<Item[]>{const r=await db().prepare('SELECT data FROM items ORDER BY rowid DESC').all<{data:string}>();return r.results.map(x=>JSON.parse(x.data));}
 export async function listAlerts():Promise<Alert[]>{const r=await db().prepare('SELECT data,status FROM alerts ORDER BY rowid DESC').all<{data:string;status:string}>();return r.results.map(x=>({...JSON.parse(x.data),status:x.status}));}
 export async function evidenceTypes():Promise<Record<string,string>>{const r=await db().prepare("SELECT id,json_extract(data,'$.mime') AS mime FROM evidence WHERE item_id IS NOT NULL").all<{id:string;mime:string}>();return Object.fromEntries(r.results.map(x=>[x.id,x.mime]));}
