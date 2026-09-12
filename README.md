@@ -22,6 +22,10 @@ The browser app uses D1 for `Item`, `Evidence`, and `Alert` metadata, and R2 for
 
 The server uses `deepseek-v4-flash-vision-exp` through an OpenAI-compatible endpoint. Documents are treated as untrusted data. The extraction schema accepts only explicit dates; missing dates stay `null`, and no default warranty or return policy is assumed. A user must confirm editable fields before an item is stored.
 
+## Deployment
+
+The application supports both Cloudflare Pages (`npm run build` with `vinext`) and Vercel (`next build`).
+
 ## Checks
 
 Run `npm test`, `npx tsc --noEmit`, and `npm run build`.
@@ -29,3 +33,4 @@ Run `npm test`, `npx tsc --noEmit`, and `npm run build`.
 ## License note
 
 The optional local bridge loads source from the official PilotDeck repository at a pinned revision. PilotDeck is licensed under AGPL-3.0; consult its bundled `LICENSE` after setup when redistributing or modifying that integration.
+
