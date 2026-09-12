@@ -1,0 +1,26 @@
+{
+  "purpose": "Local backup of the sample item covers used only after the demo data is enabled.",
+  "assets": [
+    {
+      "item": "MacBook Pro",
+      "file": "/sample-macbook.jpg",
+      "source": "https://www.pexels.com/photo/laptop-on-a-desk-4884106/",
+      "creator": "Artem Podrez",
+      "license": "Pexels license"
+    },
+    {
+      "item": "Fresh Milk",
+      "file": "/sample-milk.jpg",
+      "source": "https://www.pexels.com/photo/milk-in-glass-bottle-on-table-5946745/",
+      "creator": "Charlotte May",
+      "license": "Pexels license"
+    },
+    {
+      "item": "Shoes",
+      "file": "/sample-shoes.jpg",
+      "source": "https://www.pexels.com/photo/close-up-of-sneakers-on-table-13924826/",
+      "creator": "Jeffrey Jeremiah",
+      "license": "Pexels license"
+    }
+  ]
+}
