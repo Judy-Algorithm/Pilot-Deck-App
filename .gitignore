@@ -53,3 +53,6 @@ next-env.d.ts
 # Demo recording: source photos and rendered video stay local.
 /demo-cases/
 /demo-out/
+
+# Local data backup: item records and evidence photos stay on this machine.
+/.later-backup/
