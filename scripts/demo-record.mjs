@@ -58,6 +58,9 @@ async function clearCaption(page) {
   await page.waitForTimeout(400);
 }
 
+// Names the action in flight so a failure says which step broke.
+let step = 'start';
+
 const addDays = (n) => {
   const d = new Date(Date.now() + n * 86400000);
   return d.toISOString().slice(0, 10);
@@ -67,22 +70,39 @@ const addDays = (n) => {
 async function saveCase(page, {file, zhIntro, enIntro, zhRead, enRead, space, deadline, note}) {
   await say(page, zhIntro, enIntro);
   await clearCaption(page);
-  await page.click('.fab');
-  await page.waitForSelector('.add-actions', {timeout: 15000});
-  await page.waitForTimeout(600);
-  await page.setInputFiles('input[aria-label="Photo library"]', file);
+  // A toast from the previous save can still cover the button, so wait it out.
+  // The model occasionally answers with nothing, which leaves Save disabled.
+  // Retry the upload rather than typing a name the agent never read.
+  let read = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await page.waitForSelector('[data-sonner-toast]', {state: 'detached', timeout: 12000}).catch(() => {});
+    step = `open Add (attempt ${attempt})`;
+    await page.click('.fab');
+    await page.waitForSelector('.add-actions', {timeout: 15000});
+    await page.waitForTimeout(600);
+    step = 'choose photo';
+    await page.setInputFiles('input[aria-label="Photo library"]', file);
+    if (attempt === 1) await say(page, '上传后，agent 在后台读取凭证', 'The agent reads the evidence in the background', 2200);
+    step = 'wait for recognition';
+    await page.waitForSelector('.name-input', {timeout: 120000});
+    await clearCaption(page);
+    await page.waitForTimeout(800);
 
-  await say(page, '上传后，agent 在后台读取凭证', 'The agent reads the evidence in the background', 2200);
-  await page.waitForSelector('.name-input', {timeout: 90000});
-  await clearCaption(page);
-  await page.waitForTimeout(800);
-
-  const read = await page.evaluate(() => ({
-    name: document.querySelector('.name-input')?.value,
-    kind: document.querySelector('.seg button.on')?.textContent,
-    dates: [...document.querySelectorAll('.date-row')].map((r) => r.textContent),
-  }));
-  console.log('  recognised:', JSON.stringify(read));
+    read = await page.evaluate(() => ({
+      name: document.querySelector('.name-input')?.value,
+      kind: document.querySelector('.seg button.on')?.textContent,
+      dates: [...document.querySelectorAll('.date-row')].map((r) => r.textContent),
+      warning: document.querySelector('.warn')?.innerText || null,
+    }));
+    console.log(`  recognised (attempt ${attempt}):`, JSON.stringify(read));
+    if (read.name?.trim()) break;
+    if (attempt === 3) throw new Error(`recognition returned nothing: ${read.warning || 'no warning'}`);
+    console.log('  empty read, starting over');
+    step = 'retry upload';
+    await page.click('.topnav .icon-btn');
+    await page.waitForSelector('.head', {timeout: 15000});
+    await page.waitForTimeout(900);
+  }
 
   await say(page, zhRead, enRead, 3200);
   await clearCaption(page);
@@ -104,9 +124,11 @@ async function saveCase(page, {file, zhIntro, enIntro, zhRead, enRead, space, de
     await clearCaption(page);
   }
 
+  step = 'save item';
   await page.click('.bottom-bar .btn');
   await page.waitForSelector('.item-name', {timeout: 30000});
   await page.waitForTimeout(1200);
+  step = 'saved';
 }
 
 async function main() {
@@ -151,8 +173,8 @@ async function main() {
     file: milk,
     zhIntro: '第一件：一盒牛奶，只拍包装上的日期',
     enIntro: 'First: a carton of milk, photographed as it is',
-    zhRead: 'agent 认出了商品并读出包装上的保质日期',
-    enRead: 'The agent named the product and read the printed dates',
+    zhRead: 'agent 读出了包装喷码上的日期——这盒其实已经过期',
+    enRead: 'The agent read the date printed on the carton — this one is already past it',
   });
   await page.click('.topnav .icon-btn');
   await page.waitForSelector('.head', {timeout: 15000});
@@ -160,8 +182,8 @@ async function main() {
 
   await saveCase(page, {
     file: warranty,
-    zhIntro: '第二件：MacBook 的 Apple 保修单',
-    enIntro: 'Second: the Apple warranty document for a MacBook',
+    zhIntro: '第二件：一张照片里，电脑和保修单同框',
+    enIntro: 'Second: one photo holding both the laptop and its warranty card',
     zhRead: '购买日期和 AppleCare+ 到期日都被自动归到「保修」',
     enRead: 'Purchase date and AppleCare+ end date, filed under Warranty',
   });
@@ -233,6 +255,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error('demo failed:', error.message);
+  console.error(`demo failed at step "${step}":`, error.message.split('\n')[0]);
   process.exit(1);
 });
