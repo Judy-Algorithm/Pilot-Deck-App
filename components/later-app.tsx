@@ -135,7 +135,7 @@ return <PortalHost.Provider value={host}><div className="stage">
 {!query&&<><span className="blob"><Search size={42} strokeWidth={1.5}/></span><h2 className="ask">What are you<br/>looking for?</h2></>}
 <div className={'searchbox'+(query?' up':'')}><Search size={18} className="chev"/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Find something in Later..." aria-label="Search" autoComplete="off"/>{query&&<button className="clear" aria-label="Clear" onClick={()=>setQuery('')}><X size={14}/></button>}</div>
 {query?results.length?<div className="list">{results.map((i,n)=><Row key={i.id} item={i} mime={mime(i)} now={now} index={n} onOpen={()=>open(i)}/>)}</div>:<p className="quiet">Nothing found.</p>
-:<p className="script bottom">Save today for a brighter tomorrow.</p>}</section>}
+:null}</section>}
 
 {view==='storage'&&<section className="screen" key="storage"><div className="topnav"><button className="icon-btn" aria-label="Back" onClick={()=>go(lastTab)}><ChevronLeft size={26}/></button><span/><button className={'avatar sm'+(profile.avatar?' photo':'')} style={avatarStyle} onClick={()=>setProfileOpen(true)} aria-label="Profile">{profile.avatar?'':letter}</button></div>
 <h1 className="page-title">My Storage</h1>
